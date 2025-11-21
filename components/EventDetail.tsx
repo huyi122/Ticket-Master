@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { EventData, Ticket, TicketStatus } from '../types';
-import { ArrowLeft, Plus, Download, Edit3, Save, Trash2, AlertCircle, Wand2, Copy, CheckCircle, XCircle } from 'lucide-react';
-import { generateEventInsights } from '../services/geminiService';
+import { ArrowLeft, Plus, Edit3, Save, Trash2, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
 interface EventDetailProps {
@@ -30,8 +29,6 @@ const EventDetail: React.FC<EventDetailProps> = ({
   const [genLength, setGenLength] = useState(8);
   const [manualInput, setManualInput] = useState('');
   const [manualErrors, setManualErrors] = useState<string[]>([]);
-  const [aiInsight, setAiInsight] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
   const [editCodeInput, setEditCodeInput] = useState('');
   
@@ -51,13 +48,6 @@ const EventDetail: React.FC<EventDetailProps> = ({
     { name: 'Remaining', value: stats.remaining },
   ];
   const COLORS = ['#ef4444', '#10b981'];
-
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true);
-    const insight = await generateEventInsights(event, tickets);
-    setAiInsight(insight);
-    setIsAnalyzing(false);
-  };
 
   const validateManualInput = (text: string) => {
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -102,12 +92,6 @@ const EventDetail: React.FC<EventDetailProps> = ({
 
     onUpdateTicket(editingTicketId, { code: editCodeInput });
     setEditingTicketId(null);
-  };
-
-  const handleCopyToClipboard = () => {
-     const text = tickets.map(t => `${t.code},${t.status}`).join('\n');
-     navigator.clipboard.writeText(text);
-     alert('Copied all tickets to clipboard (CSV format)');
   };
   
   const handleSaveHeader = () => {
@@ -158,28 +142,7 @@ const EventDetail: React.FC<EventDetailProps> = ({
             </div>
           )}
         </div>
-        <div className="flex gap-2">
-           <button
-            onClick={handleAnalyze}
-            disabled={isAnalyzing}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors border border-purple-200"
-          >
-            <Wand2 className="w-4 h-4" />
-            {isAnalyzing ? 'Analyzing...' : 'AI Insights'}
-          </button>
-        </div>
       </div>
-
-      {/* AI Insight Box */}
-      {aiInsight && (
-        <div className="bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-100 flex gap-3 items-start animate-in fade-in slide-in-from-top-2">
-            <Wand2 className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-1" />
-            <div>
-                <h3 className="font-bold text-indigo-900 text-sm mb-1">Gemini Analysis</h3>
-                <p className="text-indigo-800 text-sm leading-relaxed">{aiInsight}</p>
-            </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Stats Column */}
@@ -240,12 +203,6 @@ const EventDetail: React.FC<EventDetailProps> = ({
                         className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg font-medium transition-colors ${mode === 'manual' ? 'bg-brand-50 text-brand-700 ring-2 ring-brand-500' : 'bg-white border border-slate-300 hover:bg-slate-50 text-slate-700'}`}
                     >
                         <Edit3 className="w-4 h-4" /> Bulk Add / Edit
-                    </button>
-                     <button 
-                        onClick={handleCopyToClipboard}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg font-medium transition-colors"
-                    >
-                        <Copy className="w-4 h-4" /> Copy to Clipboard
                     </button>
                 </div>
             </div>
@@ -378,6 +335,7 @@ const EventDetail: React.FC<EventDetailProps> = ({
                                                         <Edit3 className="w-4 h-4" />
                                                     </button>
                                                     <button 
+                                                        type="button"
                                                         onClick={() => onDeleteTicket(t.id)}
                                                         className="p-1 text-slate-400 hover:text-red-600"
                                                         title="Delete"

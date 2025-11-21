@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { EventData, Ticket, TicketStatus } from './types';
 import EventDetail from './components/EventDetail';
 import Validator from './components/Validator';
-import { suggestEventNames } from './services/geminiService';
-import { Plus, Archive, Sparkles, Calendar, Search, LayoutGrid, List, Download, Upload, Database, Edit2, X } from 'lucide-react';
+import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X } from 'lucide-react';
 
 // Helper for random strings
 const generateId = (length: number) => {
@@ -45,8 +44,6 @@ const App: React.FC = () => {
   const [eventDesc, setEventDesc] = useState('');
   const [editingEventId, setEditingEventId] = useState<string | null>(null); // Track which event is being edited
   
-  const [suggestedNames, setSuggestedNames] = useState<string[]>([]);
-  const [isSuggesting, setIsSuggesting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
   // Ref for file input
@@ -70,7 +67,6 @@ const App: React.FC = () => {
   const openCreateModal = () => {
     setEventName('');
     setEventDesc('');
-    setSuggestedNames([]);
     setEditingEventId(null);
     setShowCreateModal(true);
   };
@@ -78,7 +74,6 @@ const App: React.FC = () => {
   const openEditModal = (event: EventData) => {
     setEventName(event.name);
     setEventDesc(event.description);
-    setSuggestedNames([]);
     setEditingEventId(event.id);
     setShowEditModal(true);
   };
@@ -156,17 +151,7 @@ const App: React.FC = () => {
   };
 
   const handleDeleteTicket = (ticketId: string) => {
-    if (window.confirm('Delete this ticket permanently?')) {
-      setTickets(tickets.filter(t => t.id !== ticketId));
-    }
-  };
-
-  const handleGetSuggestions = async () => {
-    if (!eventDesc) return;
-    setIsSuggesting(true);
-    const names = await suggestEventNames(eventDesc);
-    setSuggestedNames(names);
-    setIsSuggesting(false);
+    setTickets(tickets.filter(t => t.id !== ticketId));
   };
 
   // --- Data Management Actions ---
@@ -455,39 +440,14 @@ const App: React.FC = () => {
                 <div className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Theme / Description</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="text" 
-                                className="flex-1 rounded-lg border-slate-300 border px-3 py-2 focus:ring-brand-500 focus:border-brand-500"
-                                placeholder="e.g. Summer Gala 2024"
-                                value={eventDesc}
-                                onChange={e => setEventDesc(e.target.value)}
-                            />
-                             <button 
-                                onClick={handleGetSuggestions}
-                                disabled={!eventDesc || isSuggesting}
-                                className="p-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 disabled:opacity-50"
-                                title="Generate Names with AI"
-                            >
-                                <Sparkles className={`w-5 h-5 ${isSuggesting ? 'animate-spin' : ''}`} />
-                            </button>
-                        </div>
+                        <input 
+                            type="text" 
+                            className="w-full rounded-lg border-slate-300 border px-3 py-2 focus:ring-brand-500 focus:border-brand-500"
+                            placeholder="e.g. Summer Gala 2024"
+                            value={eventDesc}
+                            onChange={e => setEventDesc(e.target.value)}
+                        />
                     </div>
-
-                    {suggestedNames.length > 0 && (
-                        <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
-                            <span className="text-xs text-slate-400 w-full">AI Suggestions:</span>
-                            {suggestedNames.map(name => (
-                                <button 
-                                    key={name} 
-                                    onClick={() => setEventName(name)}
-                                    className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-full hover:border-brand-300 hover:text-brand-600 transition-colors"
-                                >
-                                    {name}
-                                </button>
-                            ))}
-                        </div>
-                    )}
 
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Event Name</label>
