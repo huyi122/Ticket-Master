@@ -3,7 +3,7 @@ import { EventData, Ticket, TicketStatus } from './types';
 import EventDetail from './components/EventDetail';
 import Validator from './components/Validator';
 import { suggestEventNames } from './services/geminiService';
-import { Plus, Archive, Sparkles, Calendar, Search, LayoutGrid, List, Download, Upload, Database } from 'lucide-react';
+import { Plus, Archive, Sparkles, Calendar, Search, LayoutGrid, List, Download, Upload, Database, Edit2, X } from 'lucide-react';
 
 // Helper for random strings
 const generateId = (length: number) => {
@@ -15,9 +15,20 @@ const generateId = (length: number) => {
   return result;
 };
 
+// Robust UUID generator that works in non-secure contexts
+const uuid = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    try {
+      return crypto.randomUUID();
+    } catch (e) {
+      // Fallback if crypto.randomUUID fails
+    }
+  }
+  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+};
+
 const App: React.FC = () => {
   // --- State ---
-  // Persist to local storage in a real app, using simplified in-memory state for demo structure
   const [events, setEvents] = useState<EventData[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   
@@ -27,8 +38,13 @@ const App: React.FC = () => {
 
   // Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newEventName, setNewEventName] = useState('');
-  const [newEventDesc, setNewEventDesc] = useState('');
+  const [showEditModal, setShowEditModal] = useState(false); // New: Edit Modal
+  
+  // Form State (Shared for Create and Edit)
+  const [eventName, setEventName] = useState('');
+  const [eventDesc, setEventDesc] = useState('');
+  const [editingEventId, setEditingEventId] = useState<string | null>(null); // Track which event is being edited
+  
   const [suggestedNames, setSuggestedNames] = useState<string[]>([]);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -51,26 +67,50 @@ const App: React.FC = () => {
 
   // --- Actions ---
 
+  const openCreateModal = () => {
+    setEventName('');
+    setEventDesc('');
+    setSuggestedNames([]);
+    setEditingEventId(null);
+    setShowCreateModal(true);
+  };
+
+  const openEditModal = (event: EventData) => {
+    setEventName(event.name);
+    setEventDesc(event.description);
+    setSuggestedNames([]);
+    setEditingEventId(event.id);
+    setShowEditModal(true);
+  };
+
   const handleCreateEvent = () => {
-    if (!newEventName.trim()) return;
+    if (!eventName.trim()) return;
     const newEvent: EventData = {
-      id: crypto.randomUUID(),
-      name: newEventName,
-      description: newEventDesc,
+      id: uuid(),
+      name: eventName,
+      description: eventDesc,
       createdAt: Date.now(),
       isArchived: false,
     };
     setEvents([newEvent, ...events]);
     setShowCreateModal(false);
-    setNewEventName('');
-    setNewEventDesc('');
-    setSuggestedNames([]);
+  };
+
+  const handleUpdateEvent = () => {
+    if (!editingEventId || !eventName.trim()) return;
+    setEvents(events.map(e => e.id === editingEventId ? { ...e, name: eventName, description: eventDesc } : e));
+    setShowEditModal(false);
+    setEditingEventId(null);
+  };
+
+  // Used by EventDetail component to update event
+  const handleUpdateEventDirect = (eventId: string, name: string, description: string) => {
+     setEvents(events.map(e => e.id === eventId ? { ...e, name, description } : e));
   };
 
   const handleArchiveEvent = (id: string) => {
-    if (window.confirm('Archiving this event will also archive all its tickets. Continue?')) {
-      setEvents(events.map(e => e.id === id ? { ...e, isArchived: true } : e));
-    }
+    // Removed window.confirm to prevent blocking issues. Users can restore if needed.
+    setEvents(events.map(e => e.id === id ? { ...e, isArchived: true } : e));
   };
   
   const handleRestoreEvent = (id: string) => {
@@ -86,7 +126,7 @@ const App: React.FC = () => {
       const code = generateId(length);
       if (!existingCodes.has(code)) {
         newTickets.push({
-          id: crypto.randomUUID(),
+          id: uuid(),
           eventId,
           code,
           status: TicketStatus.ISSUED,
@@ -102,7 +142,7 @@ const App: React.FC = () => {
   const handleAddTicketsManual = (eventId: string, codes: string[]) => {
     // Assuming validation happened in the child component
     const newTickets = codes.map(code => ({
-      id: crypto.randomUUID(),
+      id: uuid(),
       eventId,
       code,
       status: TicketStatus.ISSUED as TicketStatus,
@@ -122,9 +162,9 @@ const App: React.FC = () => {
   };
 
   const handleGetSuggestions = async () => {
-    if (!newEventDesc) return;
+    if (!eventDesc) return;
     setIsSuggesting(true);
-    const names = await suggestEventNames(newEventDesc);
+    const names = await suggestEventNames(eventDesc);
     setSuggestedNames(names);
     setIsSuggesting(false);
   };
@@ -227,6 +267,7 @@ const App: React.FC = () => {
                 onAddTicketsManual={handleAddTicketsManual}
                 onDeleteTicket={handleDeleteTicket}
                 onUpdateTicket={handleUpdateTicket}
+                onUpdateEvent={handleUpdateEventDirect}
             />
         </div>
       </div>
@@ -251,7 +292,7 @@ const App: React.FC = () => {
                 <Search className="w-4 h-4" /> Validator Mode
             </button>
             <button 
-                onClick={() => setShowCreateModal(true)}
+                onClick={openCreateModal}
                 className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center gap-2"
             >
                 <Plus className="w-4 h-4" /> Create Event
@@ -323,7 +364,7 @@ const App: React.FC = () => {
                     {showArchived ? "No archived events." : "Get started by creating a new VIP event."}
                 </p>
                 {!showArchived && (
-                    <button onClick={() => setShowCreateModal(true)} className="mt-4 text-brand-600 font-medium hover:underline">Create Event</button>
+                    <button onClick={openCreateModal} className="mt-4 text-brand-600 font-medium hover:underline">Create Event</button>
                 )}
             </div>
         ) : (
@@ -365,13 +406,22 @@ const App: React.FC = () => {
                                         >
                                             Manage Tickets &rarr;
                                         </button>
-                                        <button 
-                                            onClick={() => handleArchiveEvent(event.id)}
-                                            className="text-slate-400 hover:text-red-600 p-1"
-                                            title="Archive Event"
-                                        >
-                                            <Archive className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center gap-1">
+                                            <button 
+                                                onClick={() => openEditModal(event)}
+                                                className="text-slate-400 hover:text-brand-600 p-1.5 rounded-md hover:bg-slate-100 transition-colors"
+                                                title="Edit Event Name"
+                                            >
+                                                <Edit2 className="w-4 h-4" />
+                                            </button>
+                                            <button 
+                                                onClick={() => handleArchiveEvent(event.id)}
+                                                className="text-slate-400 hover:text-red-600 p-1.5 rounded-md hover:bg-slate-100 transition-colors"
+                                                title="Archive Event"
+                                            >
+                                                <Archive className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </>
                                 ) : (
                                      <button 
@@ -389,11 +439,18 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Create Modal */}
-      {showCreateModal && (
+      {/* Create/Edit Modal */}
+      {(showCreateModal || showEditModal) && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 animate-in fade-in zoom-in duration-200">
-                <h2 className="text-xl font-bold text-slate-900 mb-4">Create New Event</h2>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold text-slate-900">
+                        {showEditModal ? 'Edit Event' : 'Create New Event'}
+                    </h2>
+                    <button onClick={() => { setShowCreateModal(false); setShowEditModal(false); }} className="text-slate-400 hover:text-slate-600">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
                 
                 <div className="space-y-4">
                     <div>
@@ -403,12 +460,12 @@ const App: React.FC = () => {
                                 type="text" 
                                 className="flex-1 rounded-lg border-slate-300 border px-3 py-2 focus:ring-brand-500 focus:border-brand-500"
                                 placeholder="e.g. Summer Gala 2024"
-                                value={newEventDesc}
-                                onChange={e => setNewEventDesc(e.target.value)}
+                                value={eventDesc}
+                                onChange={e => setEventDesc(e.target.value)}
                             />
                              <button 
                                 onClick={handleGetSuggestions}
-                                disabled={!newEventDesc || isSuggesting}
+                                disabled={!eventDesc || isSuggesting}
                                 className="p-2 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 disabled:opacity-50"
                                 title="Generate Names with AI"
                             >
@@ -423,7 +480,7 @@ const App: React.FC = () => {
                             {suggestedNames.map(name => (
                                 <button 
                                     key={name} 
-                                    onClick={() => setNewEventName(name)}
+                                    onClick={() => setEventName(name)}
                                     className="text-xs bg-white border border-slate-200 px-2 py-1 rounded-full hover:border-brand-300 hover:text-brand-600 transition-colors"
                                 >
                                     {name}
@@ -437,25 +494,25 @@ const App: React.FC = () => {
                         <input 
                             type="text" 
                             className="w-full rounded-lg border-slate-300 border px-3 py-2 focus:ring-brand-500 focus:border-brand-500"
-                            value={newEventName}
-                            onChange={e => setNewEventName(e.target.value)}
+                            value={eventName}
+                            onChange={e => setEventName(e.target.value)}
                         />
                     </div>
                 </div>
 
                 <div className="mt-8 flex justify-end gap-3">
                     <button 
-                        onClick={() => setShowCreateModal(false)}
+                        onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
                         className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-50 rounded-lg"
                     >
                         Cancel
                     </button>
                     <button 
-                        onClick={handleCreateEvent}
-                        disabled={!newEventName}
+                        onClick={showEditModal ? handleUpdateEvent : handleCreateEvent}
+                        disabled={!eventName}
                         className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Create Event
+                        {showEditModal ? 'Save Changes' : 'Create Event'}
                     </button>
                 </div>
             </div>

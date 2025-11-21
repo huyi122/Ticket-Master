@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { EventData, Ticket, TicketStatus } from '../types';
-import { ArrowLeft, Plus, Download, Edit3, Save, Trash2, AlertCircle, Wand2, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, Download, Edit3, Save, Trash2, AlertCircle, Wand2, Copy, CheckCircle, XCircle } from 'lucide-react';
 import { generateEventInsights } from '../services/geminiService';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
@@ -12,6 +12,7 @@ interface EventDetailProps {
   onAddTicketsManual: (eventId: string, codes: string[]) => void;
   onDeleteTicket: (ticketId: string) => void;
   onUpdateTicket: (ticketId: string, updates: Partial<Ticket>) => void;
+  onUpdateEvent: (eventId: string, name: string, description: string) => void;
 }
 
 const EventDetail: React.FC<EventDetailProps> = ({
@@ -21,7 +22,8 @@ const EventDetail: React.FC<EventDetailProps> = ({
   onGenerateTickets,
   onAddTicketsManual,
   onDeleteTicket,
-  onUpdateTicket
+  onUpdateTicket,
+  onUpdateEvent
 }) => {
   const [mode, setMode] = useState<'view' | 'generate' | 'manual'>('view');
   const [genCount, setGenCount] = useState(10);
@@ -32,6 +34,11 @@ const EventDetail: React.FC<EventDetailProps> = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [editingTicketId, setEditingTicketId] = useState<string | null>(null);
   const [editCodeInput, setEditCodeInput] = useState('');
+  
+  // Header editing state
+  const [isEditingHeader, setIsEditingHeader] = useState(false);
+  const [headerName, setHeaderName] = useState(event.name);
+  const [headerDesc, setHeaderDesc] = useState(event.description);
 
   const stats = useMemo(() => {
     const total = tickets.length;
@@ -102,19 +109,54 @@ const EventDetail: React.FC<EventDetailProps> = ({
      navigator.clipboard.writeText(text);
      alert('Copied all tickets to clipboard (CSV format)');
   };
+  
+  const handleSaveHeader = () => {
+      if (!headerName.trim()) return;
+      onUpdateEvent(event.id, headerName, headerDesc);
+      setIsEditingHeader(false);
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 flex-1">
           <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
             <ArrowLeft className="w-6 h-6 text-slate-600" />
           </button>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">{event.name}</h1>
-            <p className="text-sm text-slate-500">{event.description || 'No description'} • Created {new Date(event.createdAt).toLocaleDateString()}</p>
-          </div>
+          
+          {isEditingHeader ? (
+              <div className="flex-1 max-w-md space-y-2">
+                  <input 
+                    type="text" 
+                    value={headerName} 
+                    onChange={(e) => setHeaderName(e.target.value)} 
+                    className="w-full px-2 py-1 text-lg font-bold border rounded border-slate-300 focus:border-brand-500 outline-none"
+                    placeholder="Event Name"
+                  />
+                  <input 
+                    type="text" 
+                    value={headerDesc} 
+                    onChange={(e) => setHeaderDesc(e.target.value)} 
+                    className="w-full px-2 py-1 text-sm text-slate-500 border rounded border-slate-300 focus:border-brand-500 outline-none"
+                    placeholder="Description"
+                  />
+                  <div className="flex gap-2 mt-1">
+                      <button onClick={handleSaveHeader} className="px-3 py-1 bg-brand-600 text-white text-xs rounded hover:bg-brand-700">Save</button>
+                      <button onClick={() => { setIsEditingHeader(false); setHeaderName(event.name); setHeaderDesc(event.description); }} className="px-3 py-1 bg-slate-200 text-slate-700 text-xs rounded hover:bg-slate-300">Cancel</button>
+                  </div>
+              </div>
+          ) : (
+            <div className="group relative">
+                <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-bold text-slate-900">{event.name}</h1>
+                    <button onClick={() => { setIsEditingHeader(true); setHeaderName(event.name); setHeaderDesc(event.description); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-brand-600 p-1 transition-opacity">
+                        <Edit3 className="w-4 h-4" />
+                    </button>
+                </div>
+                <p className="text-sm text-slate-500">{event.description || 'No description'} • Created {new Date(event.createdAt).toLocaleDateString()}</p>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
            <button
@@ -357,8 +399,5 @@ const EventDetail: React.FC<EventDetailProps> = ({
     </div>
   );
 };
-
-// Helpers needed for table icons
-import { CheckCircle, XCircle } from 'lucide-react';
 
 export default EventDetail;
