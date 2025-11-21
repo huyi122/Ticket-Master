@@ -1,0 +1,5 @@
+{
+  "name": "VIP Ticket Master",
+  "description": "A comprehensive VIP ticket management system with batch generation, duplicate validation, and real-time check-in status tracking.",
+  "requestFramePermissions": []
+}
