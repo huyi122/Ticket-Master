@@ -150,8 +150,8 @@ const EventDetail: React.FC<EventDetailProps> = ({
             {/* Overview Card */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Overview</h3>
-                <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
+                <div className="w-full" style={{ minWidth: 1, minHeight: 1, height: 200 }}>
+                    <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
                         <PieChart>
                             <Pie
                                 data={chartData}

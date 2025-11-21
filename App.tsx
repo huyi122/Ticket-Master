@@ -30,6 +30,7 @@ const App: React.FC = () => {
   // --- State ---
   const [events, setEvents] = useState<EventData[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false); // avoid wiping saved data before load
   
   // Navigation State
   const [currentView, setCurrentView] = useState<'dashboard' | 'validator' | 'event_detail'>('dashboard');
@@ -53,14 +54,21 @@ const App: React.FC = () => {
   useEffect(() => {
     const storedEvents = localStorage.getItem('vtm_events');
     const storedTickets = localStorage.getItem('vtm_tickets');
-    if (storedEvents) setEvents(JSON.parse(storedEvents));
-    if (storedTickets) setTickets(JSON.parse(storedTickets));
+    try {
+      if (storedEvents) setEvents(JSON.parse(storedEvents));
+      if (storedTickets) setTickets(JSON.parse(storedTickets));
+    } catch (err) {
+      console.error('Failed to parse stored data', err);
+    } finally {
+      setIsHydrated(true);
+    }
   }, []);
 
   useEffect(() => {
+    if (!isHydrated) return; // wait for initial load to avoid wiping existing data
     localStorage.setItem('vtm_events', JSON.stringify(events));
     localStorage.setItem('vtm_tickets', JSON.stringify(tickets));
-  }, [events, tickets]);
+  }, [events, tickets, isHydrated]);
 
   // --- Actions ---
 
