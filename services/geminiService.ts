@@ -1,10 +1,26 @@
 import { GoogleGenAI } from "@google/genai";
 import { EventData, Ticket, TicketStatus } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper to safely get the AI client.
+// This ensures the app doesn't crash if process.env is undefined (e.g. running locally on phone)
+const getAiClient = () => {
+  try {
+    // @ts-ignore - process might be undefined in browser context without build step
+    const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
+    if (!apiKey) return null;
+    return new GoogleGenAI({ apiKey });
+  } catch (e) {
+    return null;
+  }
+};
 
 export const generateEventInsights = async (event: EventData, tickets: Ticket[]): Promise<string> => {
   try {
+    const ai = getAiClient();
+    if (!ai) {
+      return "AI analysis is not available. Please configure the API_KEY to enable smart insights.";
+    }
+
     const total = tickets.length;
     const used = tickets.filter(t => t.status === TicketStatus.USED).length;
     const remaining = total - used;
@@ -37,6 +53,12 @@ export const generateEventInsights = async (event: EventData, tickets: Ticket[])
 
 export const suggestEventNames = async (theme: string): Promise<string[]> => {
   try {
+    const ai = getAiClient();
+    if (!ai) {
+      // Return mock data if no API key, so the UI doesn't break
+      return [];
+    }
+
     const prompt = `List 5 creative, short, and exclusive-sounding names for a VIP event with the theme: "${theme}". Return ONLY a JSON array of strings, e.g., ["Name 1", "Name 2"]`;
     
     const response = await ai.models.generateContent({
