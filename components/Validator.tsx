@@ -118,10 +118,27 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
       let emptyFrameCount = 0;
 
       const tick = async () => {
-        if (!videoRef.current) return;
+        const video = videoRef.current;
+        if (!video) return;
+
+        const hasStream = !!(video as any).srcObject;
+        const w = video.videoWidth;
+        const h = video.videoHeight;
+
+        if (!hasStream || !w || !h) {
+          emptyFrameCount += 1;
+          if (emptyFrameCount > 120) {
+            setScanError('Camera feed unavailable. Try reopening scan or switching camera.');
+            stopScan();
+            return;
+          }
+          rafRef.current = requestAnimationFrame(tick);
+          return;
+        }
+
         try {
           if (hasBarcode && detector) {
-            const codes = await detector.detect(videoRef.current);
+            const codes = await detector.detect(video);
             if (codes && codes.length > 0) {
               const value = codes[0].rawValue;
               stopScan();
@@ -129,38 +146,25 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
               return;
             }
           } else if (jsqrRef.current && canvasRef.current) {
-            const video = videoRef.current;
-            const w = video.videoWidth;
-            const h = video.videoHeight;
-            if (w && h) {
-              const canvas = canvasRef.current;
-              if (canvas.width !== w || canvas.height !== h) {
-                canvas.width = w;
-                canvas.height = h;
+            const canvas = canvasRef.current;
+            if (canvas.width !== w || canvas.height !== h) {
+              canvas.width = w;
+              canvas.height = h;
+            }
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, w, h);
+              const imageData = ctx.getImageData(0, 0, w, h);
+              const code = jsqrRef.current(imageData.data, w, h);
+              if (code?.data) {
+                stopScan();
+                handleSearch(code.data);
+                return;
               }
-              const ctx = canvas.getContext('2d', { willReadFrequently: true });
-              if (ctx) {
-                ctx.drawImage(video, 0, 0, w, h);
-                const imageData = ctx.getImageData(0, 0, w, h);
-                const code = jsqrRef.current(imageData.data, w, h);
-                if (code?.data) {
-                  stopScan();
-                  handleSearch(code.data);
-                  return;
-                }
-              }
-            } else {
-              emptyFrameCount += 1;
             }
           }
         } catch (err) {
           setScanError('Unable to read code. Try adjusting the camera.');
-        }
-
-        if (emptyFrameCount > 120) {
-          setScanError('Camera feed unavailable. Try switching camera or reopening scan.');
-          stopScan();
-          return;
         }
 
         rafRef.current = requestAnimationFrame(tick);
