@@ -82,6 +82,10 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
         try {
           await new Promise<void>((resolve) => {
             const videoEl = videoRef.current!;
+            if (videoEl.readyState >= 1) {
+              resolve();
+              return;
+            }
             const onReady = () => {
               videoEl.removeEventListener('loadedmetadata', onReady);
               resolve();
@@ -91,6 +95,7 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
           await videoRef.current.play();
         } catch (e) {
           console.error('Video play failed', e);
+          setScanError('Camera preview unavailable. Try reopening scan.');
         }
       }
 
@@ -110,6 +115,7 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
       }
 
       setIsScanning(true);
+      let emptyFrameCount = 0;
 
       const tick = async () => {
         if (!videoRef.current) return;
@@ -143,11 +149,20 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
                   return;
                 }
               }
+            } else {
+              emptyFrameCount += 1;
             }
           }
         } catch (err) {
           setScanError('Unable to read code. Try adjusting the camera.');
         }
+
+        if (emptyFrameCount > 120) {
+          setScanError('Camera feed unavailable. Try switching camera or reopening scan.');
+          stopScan();
+          return;
+        }
+
         rafRef.current = requestAnimationFrame(tick);
       };
 
