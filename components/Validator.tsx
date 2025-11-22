@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Ticket, EventData, TicketStatus } from '../types';
-import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, RefreshCw, Clock, Camera } from 'lucide-react';
 
 interface ValidatorProps {
   events: EventData[];
@@ -17,10 +17,36 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
     status?: 'valid_unused' | 'valid_used' | 'not_found' | 'archived';
   } | null>(null);
 
-  const handleSearch = () => {
-    if (!inputCode.trim()) return;
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number>();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const jsqrRef = useRef<any>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [canScan, setCanScan] = useState(false);
 
-    const ticket = tickets.find(t => t.code === inputCode.trim());
+  const stopScan = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = undefined;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsScanning(false);
+  };
+
+  const handleSearch = (codeOverride?: string) => {
+    const code = (codeOverride ?? inputCode).trim();
+    if (!code) return;
+    setInputCode(code);
+
+    const ticket = tickets.find(t => t.code === code);
     
     if (!ticket) {
       setSearchResult({ found: false, status: 'not_found' });
@@ -40,6 +66,91 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
       setSearchResult({ found: true, ticket, event, status: 'valid_unused' });
     }
   };
+
+  const startScan = async () => {
+    if (!canScan) return;
+    setScanError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      const hasBarcode = typeof (window as any).BarcodeDetector !== 'undefined';
+      let detector: any = null;
+      if (hasBarcode) {
+        const Detector = (window as any).BarcodeDetector;
+        detector = new Detector({ formats: ['qr_code', 'code_128', 'code_39', 'ean_13'] });
+      } else {
+        if (!jsqrRef.current) {
+          const mod = await import('jsqr');
+          jsqrRef.current = (mod as any).default || mod;
+        }
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement('canvas');
+        }
+      }
+
+      setIsScanning(true);
+
+      const tick = async () => {
+        if (!videoRef.current) return;
+        try {
+          if (hasBarcode && detector) {
+            const codes = await detector.detect(videoRef.current);
+            if (codes && codes.length > 0) {
+              const value = codes[0].rawValue;
+              stopScan();
+              handleSearch(value);
+              return;
+            }
+          } else if (jsqrRef.current && canvasRef.current) {
+            const video = videoRef.current;
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            if (w && h) {
+              const canvas = canvasRef.current;
+              if (canvas.width !== w || canvas.height !== h) {
+                canvas.width = w;
+                canvas.height = h;
+              }
+              const ctx = canvas.getContext('2d', { willReadFrequently: true });
+              if (ctx) {
+                ctx.drawImage(video, 0, 0, w, h);
+                const imageData = ctx.getImageData(0, 0, w, h);
+                const code = jsqrRef.current(imageData.data, w, h);
+                if (code?.data) {
+                  stopScan();
+                  handleSearch(code.data);
+                  return;
+                }
+              }
+            }
+          }
+        } catch (err) {
+          setScanError('Unable to read code. Try adjusting the camera.');
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      };
+
+      tick();
+    } catch (error) {
+      console.error(error);
+      setScanError('Camera not available or permission denied.');
+      stopScan();
+    }
+  };
+
+  useEffect(() => {
+    const hasMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+    setCanScan(hasMedia);
+
+    return () => {
+      stopScan();
+    };
+  }, []);
 
   const handleCheckIn = () => {
     if (searchResult?.ticket && searchResult.status === 'valid_unused') {
@@ -73,14 +184,14 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Ticket ID</label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <input
                     type="text"
                     value={inputCode}
                     onChange={(e) => setInputCode(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     placeholder="e.g. VIP-8X92M"
-                    className="flex-1 block w-full rounded-lg border-slate-300 border px-4 py-3 text-lg focus:ring-brand-500 focus:border-brand-500"
+                    className="flex-1 min-w-[180px] rounded-lg border-slate-300 border px-4 py-3 text-lg focus:ring-brand-500 focus:border-brand-500"
                     autoFocus
                   />
                   <button
@@ -90,7 +201,25 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
                   >
                     Verify
                   </button>
+                  {canScan && (
+                    <button
+                      onClick={isScanning ? stopScan : startScan}
+                      className="px-4 py-3 bg-brand-50 text-brand-700 border border-brand-100 rounded-lg font-semibold hover:bg-brand-100 transition-colors flex items-center gap-2"
+                    >
+                      <Camera className="w-5 h-5" /> {isScanning ? 'Stop' : 'Scan QR'}
+                    </button>
+                  )}
                 </div>
+                {scanError && <p className="text-sm text-red-600 mt-2">{scanError}</p>}
+                {!canScan && (
+                  <p className="text-xs text-slate-500 mt-2">QR scanning not supported on this device/browser. Manual entry only.</p>
+                )}
+                {isScanning && (
+                  <div className="mt-4 bg-slate-900 rounded-lg p-2">
+                    <video ref={videoRef} className="w-full rounded-md" muted playsInline autoPlay />
+                    <p className="text-xs text-white/70 mt-2">Point the QR/Barcode inside the frame. Scans fill the field automatically.</p>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
