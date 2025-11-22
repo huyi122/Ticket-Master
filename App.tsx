@@ -449,23 +449,29 @@ const App: React.FC = () => {
     return (
       <>
         <div className="min-h-screen bg-slate-100 flex flex-col">
-          <nav className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-50">
-              <div className="font-bold text-lg sm:text-xl tracking-tight text-white flex items-center gap-2">
-                  <div className="w-9 h-9 bg-brand-500 rounded-xl flex items-center justify-center text-white font-bold">V</div>
-              </div>
-              <div className="flex items-center gap-2">
+          <nav className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3 flex items-center sticky top-0 z-50">
+              <div className="max-w-7xl mx-auto flex items-center gap-3">
+                <div className="w-9 h-9 bg-brand-500 rounded-xl flex items-center justify-center text-white font-bold">V</div>
                 <button 
                   onClick={() => setCurrentView('validator')}
-                  className={`px-3 py-2 text-sm font-semibold rounded-full flex items-center gap-2 border ${currentView === 'validator' ? 'bg-white text-slate-900 border-white/40 shadow' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'}`}
+                  className={`px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 ${currentView === 'validator' ? 'text-white bg-white/10' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
                 >
                   <Search className="w-4 h-4" /> Validator
                 </button>
                 <button 
                   onClick={() => isManagerAuthenticated ? setCurrentView('dashboard') : requestManagerAccess()}
-                  className={`px-3 py-2 text-sm font-semibold rounded-full flex items-center gap-2 border ${currentView !== 'validator' ? 'bg-white text-slate-900 border-white/40 shadow' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'}`}
+                  className={`px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 ${currentView !== 'validator' ? 'text-white bg-white/10' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
                 >
                   <Shield className="w-4 h-4" /> Manager
                 </button>
+                {isManagerAuthenticated && currentView !== 'validator' && (
+                  <button 
+                    onClick={handleExitManager}
+                    className="px-3 py-2 text-sm font-semibold rounded-lg flex items-center gap-2 text-white/80 hover:text-white hover:bg-white/10"
+                  >
+                    <Lock className="w-4 h-4" /> Lock
+                  </button>
+                )}
               </div>
           </nav>
           <div className="flex-1 py-12">
@@ -565,32 +571,28 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Navbar */}
       <nav className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white">
-             <div className="w-9 h-9 bg-brand-500 rounded-xl flex items-center justify-center text-white font-bold shrink-0">V</div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="max-w-7xl mx-auto flex items-center gap-3">
+          <div className="w-9 h-9 bg-brand-500 rounded-xl flex items-center justify-center text-white font-bold shrink-0">V</div>
+          <button 
+              onClick={() => setCurrentView('validator')}
+              className={`px-3 py-2 text-sm sm:text-base font-semibold rounded-lg flex items-center gap-2 ${currentView === 'validator' ? 'text-white bg-white/10' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+          >
+              <Search className="w-4 h-4" /> Validator
+          </button>
+          <button 
+              onClick={() => isManagerAuthenticated ? setCurrentView('dashboard') : requestManagerAccess()}
+              className={`px-3 py-2 text-sm sm:text-base font-semibold rounded-lg flex items-center gap-2 ${currentView !== 'validator' ? 'text-white bg-white/10' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+          >
+              <Shield className="w-4 h-4" /> Manager
+          </button>
+          {isManagerAuthenticated && currentView !== 'validator' && (
             <button 
-                onClick={() => setCurrentView('validator')}
-                className={`px-3 py-2 text-sm sm:text-base font-semibold rounded-full flex items-center gap-2 border ${currentView === 'validator' ? 'bg-white text-slate-900 border-white/40 shadow' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'}`}
+              onClick={handleExitManager}
+              className="px-3 py-2 text-sm sm:text-base font-semibold rounded-lg flex items-center gap-2 text-white/80 hover:text-white hover:bg-white/10"
             >
-                <Search className="w-4 h-4" /> Validator
+              <Lock className="w-4 h-4" /> Lock
             </button>
-            <button 
-                onClick={() => isManagerAuthenticated ? setCurrentView('dashboard') : requestManagerAccess()}
-                className={`px-3 py-2 text-sm sm:text-base font-semibold rounded-full flex items-center gap-2 border ${currentView !== 'validator' ? 'bg-white text-slate-900 border-white/40 shadow' : 'bg-white/10 text-white border-white/20 hover:bg-white/20'}`}
-            >
-                <Shield className="w-4 h-4" /> Manager
-            </button>
-            {isManagerAuthenticated && currentView !== 'validator' && (
-              <button 
-                onClick={handleExitManager}
-                className="inline-flex px-3 py-2 text-sm sm:text-base font-semibold rounded-full border border-white/30 text-white hover:bg-white/10"
-              >
-                <Lock className="w-4 h-4 mr-1" /> Lock
-              </button>
-            )}
-          </div>
+          )}
         </div>
       </nav>
 
