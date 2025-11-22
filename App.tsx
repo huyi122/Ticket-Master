@@ -231,8 +231,8 @@ const App: React.FC = () => {
                 <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">V</div>
                 VIP Ticket Master
             </div>
-            <button onClick={() => setCurrentView('dashboard')} className="text-sm font-medium text-slate-600 hover:text-brand-600">
-                Back to Dashboard
+            <button onClick={() => setCurrentView('dashboard')} className="px-3 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center gap-2">
+                <LayoutGrid className="w-4 h-4" /> Back to Dashboard
             </button>
         </nav>
         <div className="flex-1 py-12">
@@ -271,22 +271,22 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Navbar */}
-      <nav className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="font-bold text-xl tracking-tight text-slate-900 flex items-center gap-2">
-             <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">V</div>
-             VIP Ticket Master
+      <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="font-bold text-lg sm:text-xl tracking-tight text-slate-900 flex items-center gap-2">
+             <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold shrink-0">V</div>
+             <span className="leading-tight">VIP Ticket Master</span>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
             <button 
                 onClick={() => setCurrentView('validator')}
-                className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-2"
+                className="w-full sm:w-auto px-3 py-2 bg-brand-600/10 text-brand-800 text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-600/20 transition-colors flex items-center justify-center gap-2"
             >
                 <Search className="w-4 h-4" /> Validator Mode
             </button>
             <button 
                 onClick={openCreateModal}
-                className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center gap-2"
+                className="w-full sm:w-auto px-3 py-2 bg-brand-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
             >
                 <Plus className="w-4 h-4" /> Create Event
             </button>
@@ -295,18 +295,18 @@ const App: React.FC = () => {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
         
-        {/* Top Controls */}
+                {/* Top Controls */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
             <h1 className="text-2xl font-bold text-slate-900">Your Events</h1>
             
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
                 {/* Data Management */}
-                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 mr-2">
+                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 mr-0 sm:mr-2 w-full sm:w-auto">
                    <button
                       onClick={handleExportData}
-                      className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center gap-2 transition-colors"
+                      className="flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
                       title="Download Backup"
                    >
                       <Download className="w-4 h-4" /> Backup
@@ -321,7 +321,7 @@ const App: React.FC = () => {
                    />
                    <button
                       onClick={handleImportTrigger}
-                      className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center gap-2 transition-colors"
+                      className="flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
                       title="Restore from Backup"
                    >
                       <Upload className="w-4 h-4" /> Restore
@@ -329,24 +329,23 @@ const App: React.FC = () => {
                 </div>
 
                 {/* View Toggle */}
-                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
                     <button 
                         onClick={() => setShowArchived(false)}
-                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${!showArchived ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                        className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-medium transition-all ${!showArchived ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
                     >
                         Active
                     </button>
                     <button 
                         onClick={() => setShowArchived(true)}
-                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${showArchived ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+                        className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-medium transition-all ${showArchived ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
                     >
                         Archived
                     </button>
                 </div>
             </div>
         </div>
-
-        {/* Event Grid */}
+{/* Event Grid */}
         {filteredEvents.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
                 <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
