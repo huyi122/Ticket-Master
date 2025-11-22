@@ -4,7 +4,7 @@ import EventDetail from './components/EventDetail';
 import Validator from './components/Validator';
 import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X } from 'lucide-react';
 import { getFirebaseServices } from './services/firebaseClient';
-import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { ref as storageRef, uploadBytes, listAll, getBytes } from 'firebase/storage';
 
 declare const __APP_VERSION__: string;
@@ -39,7 +39,7 @@ const App: React.FC = () => {
   const [events, setEvents] = useState<EventData[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isHydrated, setIsHydrated] = useState(false); // avoid wiping saved data before load
-  const [fireStatus, setFireStatus] = useState<'off' | 'authenticating' | 'ready' | 'error'>('off');
+  const [fireStatus, setFireStatus] = useState<'off' | 'authenticating' | 'ready' | 'error' | 'needs_auth'>('off');
   const [fireError, setFireError] = useState('');
   const [fireUser, setFireUser] = useState<User | null>(null);
   const [fireBusy, setFireBusy] = useState<'idle' | 'uploading' | 'downloading'>('idle');
@@ -95,16 +95,7 @@ const App: React.FC = () => {
     setFireStatus('authenticating');
     const unsub = onAuthStateChanged(services.auth, (user) => {
       setFireUser(user);
-      if (user) {
-        setFireStatus('ready');
-      } else {
-        setFireStatus('authenticating');
-      }
-    });
-    signInAnonymously(services.auth).catch(err => {
-      console.error('Firebase auth failed', err);
-      setFireError(err.message || 'Firebase 登录失败');
-      setFireStatus('error');
+      setFireStatus(user ? 'ready' : 'needs_auth');
     });
     return () => unsub();
   }, []);
@@ -157,6 +148,19 @@ const App: React.FC = () => {
   
   const handleRestoreEvent = (id: string) => {
       setEvents(events.map(e => e.id === id ? { ...e, isArchived: false } : e));
+  };
+  
+  const handleDeleteEvent = (id: string) => {
+    const target = events.find(e => e.id === id);
+    if (!target) return;
+    const ok = window.confirm(`删除事件 "${target.name}" 将同时删除其所有票据，且无法恢复。确定删除吗？`);
+    if (!ok) return;
+    setEvents(events.filter(e => e.id !== id));
+    setTickets(tickets.filter(t => t.eventId !== id));
+    if (selectedEventId === id) {
+      setSelectedEventId(null);
+      setCurrentView('dashboard');
+    }
   };
 
   const handleGenerateTickets = (eventId: string, count: number, length: number) => {
@@ -270,6 +274,10 @@ const App: React.FC = () => {
       alert(`Firebase 连接异常：${fireError || '未知错误'}`);
       return null;
     }
+    if (fireStatus === 'needs_auth') {
+      alert('请先用 Google 登录后再使用 Fire 功能。');
+      return null;
+    }
     if (!fireUser) {
       alert('尚未登录 Firebase，稍后再试。');
       return null;
@@ -334,6 +342,30 @@ const App: React.FC = () => {
     } finally {
       setFireBusy('idle');
     }
+  };
+
+  const handleFireLogin = async () => {
+    const services = getFirebaseServices();
+    if (!services) {
+      alert('Firebase 未配置，无法登录。');
+      return;
+    }
+    setFireStatus('authenticating');
+    setFireError('');
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(services.auth, provider);
+    } catch (err: any) {
+      console.error('Firebase Google 登录失败', err);
+      setFireError(err.message || 'Google 登录失败');
+      setFireStatus('error');
+    }
+  };
+
+  const handleFireLogout = async () => {
+    const services = getFirebaseServices();
+    if (!services) return;
+    await signOut(services.auth);
   };
 
   // --- Access Control ---
@@ -553,18 +585,34 @@ const App: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
         <div className="flex flex-col gap-6 mb-8">
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-xs uppercase text-slate-500 font-semibold tracking-wide">Manager Mode</p>
-              <h1 className="text-2xl font-bold text-slate-900">Manage Events & Tickets</h1>
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="px-2 py-1 bg-slate-100 rounded-md">Local Backup & Restore</span>
-                <span className={`px-2 py-1 rounded-md ${fireStatus === 'ready' ? 'bg-emerald-100 text-emerald-700' : fireStatus === 'authenticating' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'}`}>
-                  Firebase {fireStatus === 'ready' ? 'Ready' : fireStatus === 'authenticating' ? 'Auth…' : fireStatus === 'error' ? 'Error' : 'Off'}
+              <div className="space-y-1">
+                <p className="text-xs uppercase text-slate-500 font-semibold tracking-wide">Manager Mode</p>
+                <h1 className="text-2xl font-bold text-slate-900">Manage Events & Tickets</h1>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="px-2 py-1 bg-slate-100 rounded-md">Local Backup & Restore</span>
+                <span className={`px-2 py-1 rounded-md ${fireStatus === 'ready' ? 'bg-emerald-100 text-emerald-700' : fireStatus === 'authenticating' ? 'bg-amber-100 text-amber-700' : fireStatus === 'needs_auth' ? 'bg-slate-100 text-slate-700' : 'bg-slate-200 text-slate-600'}`}>
+                  Firebase {fireStatus === 'ready' ? 'Ready' : fireStatus === 'authenticating' ? 'Auth…' : fireStatus === 'needs_auth' ? 'Sign-in required' : fireStatus === 'error' ? 'Error' : 'Off'}
                 </span>
                 {fireError && <span className="text-red-600">({fireError})</span>}
               </div>
             </div>
             <div className="flex flex-wrap gap-2 w-full md:w-auto">
+              {fireStatus === 'needs_auth' || fireStatus === 'error' ? (
+                <button
+                  onClick={handleFireLogin}
+                  className="px-3 py-2 bg-blue-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
+                >
+                  Google 登录
+                </button>
+              ) : fireStatus === 'ready' ? (
+                <button
+                  onClick={handleFireLogout}
+                  className="px-3 py-2 bg-white text-slate-700 border border-slate-200 text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-slate-50 transition-colors"
+                  title={fireUser?.email || '已登录'}
+                >
+                  退出 Google
+                </button>
+              ) : null}
               <button
                 onClick={openCreateModal}
                 className="px-3 py-2 bg-brand-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
@@ -699,12 +747,20 @@ const App: React.FC = () => {
                                         </div>
                                     </>
                                 ) : (
-                                     <button 
-                                        onClick={() => handleRestoreEvent(event.id)}
-                                        className="text-slate-600 font-medium hover:text-slate-900 text-sm flex items-center gap-1"
-                                    >
-                                        <LayoutGrid className="w-3 h-3" /> Restore Event
-                                    </button>
+                                     <div className="flex items-center gap-3">
+                                       <button 
+                                          onClick={() => handleRestoreEvent(event.id)}
+                                          className="text-slate-600 font-medium hover:text-slate-900 text-sm flex items-center gap-1"
+                                      >
+                                          <LayoutGrid className="w-3 h-3" /> Restore Event
+                                      </button>
+                                      <button 
+                                          onClick={() => handleDeleteEvent(event.id)}
+                                          className="text-red-600 font-medium hover:text-red-800 text-sm flex items-center gap-1"
+                                      >
+                                          <X className="w-4 h-4" /> Delete
+                                      </button>
+                                     </div>
                                 )}
                             </div>
                         </div>
