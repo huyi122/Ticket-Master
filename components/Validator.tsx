@@ -233,7 +233,8 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
                     autoFocus
                   />
                   <button
-                    onClick={handleSearch}
+                    type="button"
+                    onClick={() => handleSearch()}
                     disabled={!inputCode.trim()}
                     className="bg-brand-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-brand-700 disabled:opacity-50 transition-colors"
                   >

@@ -7,6 +7,8 @@ import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X
 declare const __APP_VERSION__: string;
 declare const __APP_BUILD_TIME__: string;
 
+const MANAGER_PASSWORD = 'vipadmin'; // simple built-in password for manager mode
+
 // Helper for random strings
 const generateId = (length: number) => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 1, 0 to avoid confusion
@@ -34,19 +36,23 @@ const App: React.FC = () => {
   const [events, setEvents] = useState<EventData[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isHydrated, setIsHydrated] = useState(false); // avoid wiping saved data before load
+  const [isManagerAuthenticated, setIsManagerAuthenticated] = useState(false);
   
   // Navigation State
-  const [currentView, setCurrentView] = useState<'dashboard' | 'validator' | 'event_detail'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'validator' | 'event_detail'>('validator');
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   // Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false); // New: Edit Modal
+  const [showAuthModal, setShowAuthModal] = useState(false);
   
   // Form State (Shared for Create and Edit)
   const [eventName, setEventName] = useState('');
   const [eventDesc, setEventDesc] = useState('');
   const [editingEventId, setEditingEventId] = useState<string | null>(null); // Track which event is being edited
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
   
   const [showArchived, setShowArchived] = useState(false);
 
@@ -174,11 +180,14 @@ const App: React.FC = () => {
       events,
       tickets
     };
+    const now = new Date();
+    const datePart = now.toISOString().split('T')[0];
+    const timePart = now.toTimeString().slice(0,8).replace(':', '-'); // HH-MM
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `vip-ticket-backup-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `vip-ticket-backup-${datePart}-${timePart}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -220,6 +229,35 @@ const App: React.FC = () => {
     reader.readAsText(file);
   };
 
+  // --- Access Control ---
+  const requestManagerAccess = () => {
+    if (isManagerAuthenticated) {
+      setCurrentView('dashboard');
+      return;
+    }
+    setAuthPassword('');
+    setAuthError('');
+    setShowAuthModal(true);
+  };
+
+  const handleAuthSubmit = () => {
+    if (authPassword === MANAGER_PASSWORD) {
+      setIsManagerAuthenticated(true);
+      setShowAuthModal(false);
+      setAuthPassword('');
+      setAuthError('');
+      setCurrentView('dashboard');
+      return;
+    }
+    setAuthError('invalid password! try again.');
+  };
+
+  const handleExitManager = () => {
+    setIsManagerAuthenticated(false);
+    setSelectedEventId(null);
+    setCurrentView('validator');
+  };
+
   // --- Render Helpers ---
 
   const buildMeta = {
@@ -228,32 +266,97 @@ const App: React.FC = () => {
   };
 
   const filteredEvents = events.filter(e => showArchived ? e.isArchived : !e.isArchived);
+  const authModal = showAuthModal ? (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+        <div className="flex justify-between items-center mb-4">
+          <div>
+            <p className="text-xs uppercase text-slate-500 font-semibold tracking-wide">Restricted</p>
+            <h2 className="text-xl font-bold text-slate-900">Manager Password</h2>
+          </div>
+          <button onClick={() => { setShowAuthModal(false); setAuthPassword(''); setAuthError(''); }} className="text-slate-400 hover:text-slate-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <input
+            type="password"
+            className="w-full rounded-lg border-slate-300 border px-3 py-2 focus:ring-brand-500 focus:border-brand-500"
+            placeholder="Enter manager password"
+            value={authPassword}
+            onChange={e => { setAuthPassword(e.target.value); setAuthError(''); }}
+            onKeyDown={e => e.key === 'Enter' && handleAuthSubmit()}
+            autoFocus
+          />
+          {authError && <p className="text-sm text-red-600">{authError}</p>}
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button 
+            onClick={() => { setShowAuthModal(false); setAuthPassword(''); setAuthError(''); }}
+            className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-50 rounded-lg"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={handleAuthSubmit}
+            className="px-4 py-2 bg-brand-600 text-white font-medium rounded-lg hover:bg-brand-700"
+          >
+            Unlock
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   // --- Views ---
 
   if (currentView === 'validator') {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col">
-        <nav className="bg-white shadow-sm px-6 py-4 flex justify-between items-center sticky top-0 z-50">
-            <div className="font-bold text-xl tracking-tight text-slate-900 flex items-center gap-2">
-                <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">V</div>
-                VIP Ticket Master
-            </div>
-            <button onClick={() => setCurrentView('dashboard')} className="px-3 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center gap-2">
-                <LayoutGrid className="w-4 h-4" /> Back to Dashboard
-            </button>
-        </nav>
-        <div className="flex-1 py-12">
-            <Validator 
-                events={events} 
-                tickets={tickets} 
-                onUpdateTicket={handleUpdateTicket} 
-            />
+      <>
+        <div className="min-h-screen bg-slate-100 flex flex-col">
+          <nav className="bg-white shadow-sm px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+              <div className="font-bold text-xl tracking-tight text-slate-900 flex items-center gap-2">
+                  <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">V</div>
+                  VIP Ticket Master
+              </div>
+              <button onClick={requestManagerAccess} className="px-3 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center gap-2">
+                  <LayoutGrid className="w-4 h-4" /> Manager Mode
+              </button>
+          </nav>
+          <div className="flex-1 py-12">
+              <Validator 
+                  events={events} 
+                  tickets={tickets} 
+                  onUpdateTicket={handleUpdateTicket} 
+              />
+          </div>
+          <footer className="px-6 py-3 text-xs text-slate-500 bg-slate-50 border-t border-slate-200">
+            Version {buildMeta.version} • Built {buildMeta.buildTime || 'dev'}
+          </footer>
         </div>
-        <footer className="px-6 py-3 text-xs text-slate-500 bg-slate-50 border-t border-slate-200">
-          Version {buildMeta.version} • Built {buildMeta.buildTime || 'dev'}
-        </footer>
-      </div>
+        {authModal}
+      </>
+    );
+  }
+
+  if (currentView === 'event_detail' && !isManagerAuthenticated) {
+    return (
+      <>
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6">
+          <div className="bg-white shadow-md rounded-xl border border-slate-200 p-8 max-w-md w-full text-center">
+            <div className="w-12 h-12 bg-slate-100 rounded-full mx-auto mb-3 flex items-center justify-center text-slate-500">
+              <LayoutGrid className="w-6 h-6" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">Manager Mode Locked</h2>
+            <p className="text-slate-600 mb-6">Enter the manager password to view and edit ticket details.</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={requestManagerAccess} className="px-4 py-2 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700">Unlock Manager Mode</button>
+              <button onClick={() => setCurrentView('validator')} className="px-4 py-2 text-brand-700 font-medium hover:underline">Go to Validator</button>
+            </div>
+          </div>
+        </div>
+        {authModal}
+      </>
     );
   }
 
@@ -261,25 +364,59 @@ const App: React.FC = () => {
     const event = events.find(e => e.id === selectedEventId);
     if (!event) return <div>Event not found</div>;
     return (
-      <div className="min-h-screen bg-slate-50 p-6">
-        <div className="max-w-7xl mx-auto">
-            <EventDetail 
-                event={event} 
-                tickets={tickets.filter(t => t.eventId === selectedEventId)}
-                onBack={() => setCurrentView('dashboard')}
-                onGenerateTickets={handleGenerateTickets}
-                onAddTicketsManual={handleAddTicketsManual}
-                onDeleteTicket={handleDeleteTicket}
-                onUpdateTicket={handleUpdateTicket}
-                onUpdateEvent={handleUpdateEventDirect}
-            />
+      <>
+        <div className="min-h-screen bg-slate-50 p-6">
+          <div className="max-w-7xl mx-auto">
+              <EventDetail 
+                  event={event} 
+                  tickets={tickets.filter(t => t.eventId === selectedEventId)}
+                  onBack={() => setCurrentView('dashboard')}
+                  onGenerateTickets={handleGenerateTickets}
+                  onAddTicketsManual={handleAddTicketsManual}
+                  onDeleteTicket={handleDeleteTicket}
+                  onUpdateTicket={handleUpdateTicket}
+                  onUpdateEvent={handleUpdateEventDirect}
+              />
+          </div>
         </div>
-      </div>
+        {authModal}
+      </>
     );
   }
 
   // Dashboard View
+  if (currentView === 'dashboard' && !isManagerAuthenticated) {
+    return (
+      <>
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6">
+          <div className="bg-white shadow-lg rounded-2xl border border-slate-200 p-8 max-w-lg w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-brand-100 text-brand-700 rounded-lg flex items-center justify-center font-bold">V</div>
+              <div>
+                <p className="text-xs uppercase text-slate-500 font-semibold">Manager Mode</p>
+                <h1 className="text-2xl font-bold text-slate-900">Authentication Required</h1>
+              </div>
+            </div>
+            <p className="text-slate-600 mb-6">
+              Validation is open to everyone. Managing events and tickets requires the manager password.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button onClick={requestManagerAccess} className="flex-1 px-4 py-3 bg-brand-600 text-white rounded-lg font-semibold hover:bg-brand-700">
+                Unlock Manager Mode
+              </button>
+              <button onClick={() => setCurrentView('validator')} className="px-4 py-3 border border-slate-200 rounded-lg font-semibold text-slate-700 hover:bg-slate-50">
+                Validator Mode
+              </button>
+            </div>
+          </div>
+        </div>
+        {authModal}
+      </>
+    );
+  }
+
   return (
+    <>
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Navbar */}
       <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sticky top-0 z-50">
@@ -296,10 +433,10 @@ const App: React.FC = () => {
                 <Search className="w-4 h-4" /> Validator Mode
             </button>
             <button 
-                onClick={openCreateModal}
-                className="w-full sm:w-auto px-3 py-2 bg-brand-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
+                onClick={handleExitManager}
+                className="w-full sm:w-auto px-3 py-2 bg-white text-slate-700 border border-slate-200 text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
             >
-                <Plus className="w-4 h-4" /> Create Event
+                <LayoutGrid className="w-4 h-4" /> Lock Manager
             </button>
           </div>
         </div>
@@ -310,9 +447,19 @@ const App: React.FC = () => {
         
                 {/* Top Controls */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-            <h1 className="text-2xl font-bold text-slate-900">Your Events</h1>
+            <div>
+              <p className="text-xs uppercase text-slate-500 font-semibold tracking-wide">Manager Mode</p>
+              <h1 className="text-2xl font-bold text-slate-900">Manage Events & Tickets</h1>
+            </div>
             
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
+                <button
+                  onClick={openCreateModal}
+                  className="w-full sm:w-auto px-3 py-2 bg-brand-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> New Event
+                </button>
+
                 {/* Data Management */}
                 <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 mr-0 sm:mr-2 w-full sm:w-auto">
                    <button
@@ -367,7 +514,7 @@ const App: React.FC = () => {
                     {showArchived ? "No archived events." : "Get started by creating a new VIP event."}
                 </p>
                 {!showArchived && (
-                    <button onClick={openCreateModal} className="mt-4 text-brand-600 font-medium hover:underline">Create Event</button>
+                    <button onClick={openCreateModal} className="mt-4 text-brand-600 font-medium hover:underline">New Event</button>
                 )}
             </div>
         ) : (
@@ -501,6 +648,8 @@ const App: React.FC = () => {
         </div>
       )}
     </div>
+    {authModal}
+    </>
   );
 };
 
