@@ -4,6 +4,9 @@ import EventDetail from './components/EventDetail';
 import Validator from './components/Validator';
 import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X } from 'lucide-react';
 
+declare const __APP_VERSION__: string;
+declare const __APP_BUILD_TIME__: string;
+
 // Helper for random strings
 const generateId = (length: number) => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 1, 0 to avoid confusion
@@ -219,6 +222,11 @@ const App: React.FC = () => {
 
   // --- Render Helpers ---
 
+  const buildMeta = {
+    version: typeof __APP_VERSION__ === 'undefined' ? 'dev' : __APP_VERSION__,
+    buildTime: typeof __APP_BUILD_TIME__ === 'undefined' ? '' : __APP_BUILD_TIME__,
+  };
+
   const filteredEvents = events.filter(e => showArchived ? e.isArchived : !e.isArchived);
 
   // --- Views ---
@@ -242,6 +250,9 @@ const App: React.FC = () => {
                 onUpdateTicket={handleUpdateTicket} 
             />
         </div>
+        <footer className="px-6 py-3 text-xs text-slate-500 bg-slate-50 border-t border-slate-200">
+          Version {buildMeta.version} • Built {buildMeta.buildTime || 'dev'}
+        </footer>
       </div>
     );
   }
@@ -430,6 +441,10 @@ const App: React.FC = () => {
             </div>
         )}
       </main>
+
+      <footer className="w-full border-t border-slate-200 bg-white text-xs text-slate-500 px-4 sm:px-6 py-3 text-center">
+        Version {buildMeta.version} • Built {buildMeta.buildTime || 'dev'}
+      </footer>
 
       {/* Create/Edit Modal */}
       {(showCreateModal || showEditModal) && (

@@ -75,7 +75,23 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('autoplay', 'true');
+        videoRef.current.muted = true;
+        videoRef.current.controls = false;
+        try {
+          await new Promise<void>((resolve) => {
+            const videoEl = videoRef.current!;
+            const onReady = () => {
+              videoEl.removeEventListener('loadedmetadata', onReady);
+              resolve();
+            };
+            videoEl.addEventListener('loadedmetadata', onReady, { once: true });
+          });
+          await videoRef.current.play();
+        } catch (e) {
+          console.error('Video play failed', e);
+        }
       }
 
       const hasBarcode = typeof (window as any).BarcodeDetector !== 'undefined';
@@ -216,7 +232,7 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
                 )}
                 {isScanning && (
                   <div className="mt-4 bg-slate-900 rounded-lg p-2">
-                    <video ref={videoRef} className="w-full rounded-md" muted playsInline autoPlay />
+                    <video ref={videoRef} className="w-full rounded-md bg-black aspect-video object-cover" muted playsInline autoPlay />
                     <p className="text-xs text-white/70 mt-2">Point the QR/Barcode inside the frame. Scans fill the field automatically.</p>
                   </div>
                 )}
