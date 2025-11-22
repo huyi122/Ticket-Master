@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { EventData, Ticket, TicketStatus } from './types';
 import EventDetail from './components/EventDetail';
 import Validator from './components/Validator';
-import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X } from 'lucide-react';
+import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X, Shield, LogIn, LogOut, Cloud, HardDrive, Activity } from 'lucide-react';
 import { getFirebaseServices } from './services/firebaseClient';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
 import { ref as storageRef, uploadBytes, listAll, getBytes } from 'firebase/storage';
@@ -370,10 +370,6 @@ const App: React.FC = () => {
 
   // --- Access Control ---
   const requestManagerAccess = () => {
-    if (isManagerAuthenticated) {
-      setCurrentView('dashboard');
-      return;
-    }
     setAuthPassword('');
     setAuthError('');
     setShowAuthModal(true);
@@ -388,7 +384,7 @@ const App: React.FC = () => {
       setCurrentView('dashboard');
       return;
     }
-    setAuthError('invalid password! try again.');
+    setAuthError('密码不正确，请重试');
   };
 
   const handleExitManager = () => {
@@ -453,14 +449,25 @@ const App: React.FC = () => {
     return (
       <>
         <div className="min-h-screen bg-slate-100 flex flex-col">
-          <nav className="bg-white shadow-sm px-6 py-4 flex justify-between items-center sticky top-0 z-50">
-              <div className="font-bold text-xl tracking-tight text-slate-900 flex items-center gap-2">
+          <nav className="bg-white shadow-sm px-4 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+              <div className="font-bold text-lg sm:text-xl tracking-tight text-slate-900 flex items-center gap-2">
                   <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold">V</div>
-                  VIP Ticket Master
+                  <span className="leading-tight">VIP Ticket Master</span>
               </div>
-              <button onClick={requestManagerAccess} className="px-3 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center gap-2">
-                  <LayoutGrid className="w-4 h-4" /> Manager Mode
-              </button>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentView('validator')}
+                  className="px-3 py-2 text-sm font-medium rounded-lg flex items-center gap-2 bg-brand-600/10 text-brand-800"
+                >
+                  <Search className="w-4 h-4" /> Validator
+                </button>
+                <button 
+                  onClick={() => isManagerAuthenticated ? setCurrentView('dashboard') : requestManagerAccess()}
+                  className="px-3 py-2 text-sm font-medium rounded-lg flex items-center gap-2 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                >
+                  <Shield className="w-4 h-4" /> Manager
+                </button>
+              </div>
           </nav>
           <div className="flex-1 py-12">
               <Validator 
@@ -559,89 +566,125 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Navbar */}
       <nav className="bg-white border-b border-slate-200 px-4 sm:px-6 py-3 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="font-bold text-lg sm:text-xl tracking-tight text-slate-900 flex items-center gap-2">
              <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center text-white font-bold shrink-0">V</div>
              <span className="leading-tight">VIP Ticket Master</span>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-2">
             <button 
                 onClick={() => setCurrentView('validator')}
-                className="w-full sm:w-auto px-3 py-2 bg-brand-600/10 text-brand-800 text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-600/20 transition-colors flex items-center justify-center gap-2"
+                className={`px-3 py-2 text-sm sm:text-base font-medium rounded-lg flex items-center gap-2 ${currentView === 'validator' ? 'bg-brand-600 text-white shadow' : 'bg-brand-600/10 text-brand-800 hover:bg-brand-600/20'}`}
             >
-                <Search className="w-4 h-4" /> Validator Mode
+                <Search className="w-4 h-4" /> Validator
             </button>
             <button 
-                onClick={handleExitManager}
-                className="w-full sm:w-auto px-3 py-2 bg-white text-slate-700 border border-slate-200 text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                onClick={() => isManagerAuthenticated ? setCurrentView('dashboard') : requestManagerAccess()}
+                className={`px-3 py-2 text-sm sm:text-base font-medium rounded-lg flex items-center gap-2 ${currentView !== 'validator' ? 'bg-slate-900 text-white shadow' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
             >
-                <LayoutGrid className="w-4 h-4" /> Lock Manager
+                <Shield className="w-4 h-4" /> Manager
             </button>
+            {isManagerAuthenticated && currentView !== 'validator' && (
+              <button 
+                onClick={handleExitManager}
+                className="inline-flex px-3 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                <LayoutGrid className="w-4 h-4 mr-1" /> Lock
+              </button>
+            )}
           </div>
         </div>
       </nav>
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
-        <div className="flex flex-col gap-6 mb-8">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div className="flex flex-col gap-4 mb-8">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
               <div className="space-y-1">
                 <p className="text-xs uppercase text-slate-500 font-semibold tracking-wide">Manager Mode</p>
                 <h1 className="text-2xl font-bold text-slate-900">Manage Events & Tickets</h1>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="px-2 py-1 bg-slate-100 rounded-md">Local Backup & Restore</span>
-                <span className={`px-2 py-1 rounded-md ${fireStatus === 'ready' ? 'bg-emerald-100 text-emerald-700' : fireStatus === 'authenticating' ? 'bg-amber-100 text-amber-700' : fireStatus === 'needs_auth' ? 'bg-slate-100 text-slate-700' : 'bg-slate-200 text-slate-600'}`}>
-                  Firebase {fireStatus === 'ready' ? 'Ready' : fireStatus === 'authenticating' ? 'Auth…' : fireStatus === 'needs_auth' ? 'Sign-in required' : fireStatus === 'error' ? 'Error' : 'Off'}
-                </span>
-                {fireError && <span className="text-red-600">({fireError})</span>}
               </div>
-            </div>
-            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-              {fireStatus === 'needs_auth' || fireStatus === 'error' ? (
-                <button
-                  onClick={handleFireLogin}
-                  className="px-3 py-2 bg-blue-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
-                >
-                  Google 登录
-                </button>
-              ) : fireStatus === 'ready' ? (
-                <button
-                  onClick={handleFireLogout}
-                  className="px-3 py-2 bg-white text-slate-700 border border-slate-200 text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-slate-50 transition-colors"
-                  title={fireUser?.email || '已登录'}
-                >
-                  退出 Google
-                </button>
-              ) : null}
               <button
                 onClick={openCreateModal}
                 className="px-3 py-2 bg-brand-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
               >
                 <Plus className="w-4 h-4" /> New Event
               </button>
-              <button
-                onClick={handleFireBackup}
-                disabled={fireStatus !== 'ready' || fireBusy !== 'idle'}
-                className={`px-3 py-2 text-sm sm:text-base font-medium rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors ${fireStatus === 'ready' && fireBusy === 'idle' ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-teal-100 text-teal-700 cursor-not-allowed'}`}
-              >
-                <Upload className="w-4 h-4" /> Fire Backup
-              </button>
-              <button
-                onClick={handleFireRestore}
-                disabled={fireStatus !== 'ready' || fireBusy !== 'idle'}
-                className={`px-3 py-2 text-sm sm:text-base font-medium rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors ${fireStatus === 'ready' && fireBusy === 'idle' ? 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-50' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}
-              >
-                <Download className="w-4 h-4" /> Fire Restore
-              </button>
-              <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200">
+          </div>
+
+          {/* Controls grouped */}
+          <div className="grid md:grid-cols-2 gap-3">
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Cloud className="w-4 h-4 text-slate-500" />
+                  <p className="text-xs uppercase text-slate-500 font-semibold">Cloud (Firebase)</p>
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <span className={`px-2 py-1 rounded-md ${fireStatus === 'ready' ? 'bg-emerald-100 text-emerald-700' : fireStatus === 'authenticating' ? 'bg-amber-100 text-amber-700' : fireStatus === 'needs_auth' ? 'bg-slate-100 text-slate-700' : 'bg-slate-200 text-slate-600'}`}>
+                      {fireStatus === 'ready' ? 'Ready' : fireStatus === 'authenticating' ? 'Auth…' : fireStatus === 'needs_auth' ? 'Sign-in required' : fireStatus === 'error' ? 'Error' : 'Off'}
+                    </span>
+                    {fireError && <span className="text-red-600">({fireError})</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {fireStatus === 'needs_auth' || fireStatus === 'error' ? (
+                    <button
+                      onClick={handleFireLogin}
+                      className="px-3 py-2 bg-blue-600 text-white text-xs sm:text-sm font-semibold rounded-md hover:bg-blue-700"
+                    >
+                      Google 登录
+                    </button>
+                  ) : fireStatus === 'ready' ? (
+                    <button
+                      onClick={handleFireLogout}
+                      className="px-3 py-2 bg-white text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold rounded-md hover:bg-slate-50"
+                      title={fireUser?.email || '已登录'}
+                    >
+                      退出
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button
+                  onClick={handleFireBackup}
+                  disabled={fireStatus !== 'ready' || fireBusy !== 'idle'}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors ${fireStatus === 'ready' && fireBusy === 'idle' ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-teal-100 text-teal-700 cursor-not-allowed'}`}
+                >
+                  <Upload className="w-4 h-4" /> Fire Upload
+                </button>
+                <button
+                  onClick={handleFireRestore}
+                  disabled={fireStatus !== 'ready' || fireBusy !== 'idle'}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors ${fireStatus === 'ready' && fireBusy === 'idle' ? 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-50' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}
+                >
+                  <Download className="w-4 h-4" /> Fire Download
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-lg shadow-sm p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <HardDrive className="w-4 h-4 text-slate-500" />
+                  <p className="text-xs uppercase text-slate-500 font-semibold">Local</p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={handleExportData}
-                  className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
+                  className="flex-1 px-3 py-2 text-sm font-medium text-slate-700 hover:text-brand-700 bg-white border border-slate-200 rounded-lg flex items-center justify-center gap-2 transition-colors"
                   title="Download Backup"
                 >
-                  <Download className="w-4 h-4" /> Backup
+                  <Download className="w-4 h-4" /> Local Export
                 </button>
-                <div className="w-px h-4 bg-slate-200"></div>
+                <button
+                  onClick={handleImportTrigger}
+                  className="flex-1 px-3 py-2 text-sm font-medium text-slate-700 hover:text-brand-700 bg-white border border-slate-200 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  title="Restore from Backup"
+                >
+                  <Upload className="w-4 h-4" /> Local Import
+                </button>
                 <input 
                   type="file" 
                   ref={fileInputRef}
@@ -649,13 +692,6 @@ const App: React.FC = () => {
                   className="hidden"
                   accept=".json"
                 />
-                <button
-                  onClick={handleImportTrigger}
-                  className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
-                  title="Restore from Backup"
-                >
-                  <Upload className="w-4 h-4" /> Restore
-                </button>
               </div>
             </div>
           </div>
@@ -664,15 +700,15 @@ const App: React.FC = () => {
           <div className="flex border-b border-slate-200">
             <button
               onClick={() => setShowArchived(false)}
-              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${!showArchived ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1 ${!showArchived ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
             >
-              Active
+              <Activity className="w-4 h-4" /> Active Events
             </button>
             <button
               onClick={() => setShowArchived(true)}
-              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${showArchived ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors flex items-center gap-1 ${showArchived ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
             >
-              Archived
+              <Archive className="w-4 h-4" /> Archived Events
             </button>
           </div>
         </div>
@@ -697,30 +733,33 @@ const App: React.FC = () => {
                     const usedCount = eventTickets.filter(t => t.status === TicketStatus.USED).length;
                     
                     return (
-                        <div key={event.id} className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col">
-                            <div className="p-6 flex-1">
-                                <div className="flex justify-between items-start mb-4">
-                                    <h3 className="text-lg font-bold text-slate-900 line-clamp-1" title={event.name}>{event.name}</h3>
+                        <div 
+                          key={event.id} 
+                          className={`rounded-lg border-2 shadow-sm hover:shadow-md transition-shadow overflow-hidden flex flex-col ${event.isArchived ? 'bg-slate-50 border-slate-300' : 'bg-emerald-50 border-emerald-300'}`}
+                        >
+                            <div className="p-4 flex-1">
+                                <div className="flex justify-between items-start mb-3">
+                                    <h3 className="text-base font-bold text-slate-900 line-clamp-1" title={event.name}>{event.name}</h3>
                                     {event.isArchived && <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded font-medium">Archived</span>}
                                 </div>
-                                <p className="text-slate-500 text-sm mb-6 line-clamp-2 h-10">{event.description || "No description provided."}</p>
+                                <p className="text-slate-500 text-sm mb-4 line-clamp-2 min-h-[32px]">{event.description || "No description provided."}</p>
                                 
-                                <div className="flex gap-4 text-sm border-t border-slate-100 pt-4">
-                                    <div>
-                                        <span className="block text-xs text-slate-400 uppercase font-bold">Total</span>
+                                <div className="flex gap-4 text-sm border-t border-slate-100 pt-3">
+                                    <div className="flex-1">
+                                        <span className="block text-[10px] text-slate-400 uppercase font-bold">Total</span>
                                         <span className="font-mono font-medium text-slate-700">{eventTickets.length}</span>
                                     </div>
-                                    <div>
-                                        <span className="block text-xs text-slate-400 uppercase font-bold">Used</span>
+                                    <div className="flex-1">
+                                        <span className="block text-[10px] text-slate-400 uppercase font-bold">Used</span>
                                         <span className="font-mono font-medium text-slate-700">{usedCount}</span>
                                     </div>
-                                    <div>
-                                        <span className="block text-xs text-slate-400 uppercase font-bold">Rate</span>
+                                    <div className="flex-1">
+                                        <span className="block text-[10px] text-slate-400 uppercase font-bold">Rate</span>
                                         <span className="font-mono font-medium text-slate-700">{eventTickets.length ? Math.round((usedCount/eventTickets.length)*100) : 0}%</span>
                                     </div>
                                 </div>
                             </div>
-                            <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-between items-center">
+                            <div className="bg-slate-50 px-4 py-3 border-t border-slate-100 flex justify-between items-center">
                                 {!event.isArchived ? (
                                     <>
                                         <button 
