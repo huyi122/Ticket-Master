@@ -3,6 +3,9 @@ import { EventData, Ticket, TicketStatus } from './types';
 import EventDetail from './components/EventDetail';
 import Validator from './components/Validator';
 import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X } from 'lucide-react';
+import { getFirebaseServices } from './services/firebaseClient';
+import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
+import { ref as storageRef, uploadBytes, listAll, getBytes } from 'firebase/storage';
 
 declare const __APP_VERSION__: string;
 declare const __APP_BUILD_TIME__: string;
@@ -36,6 +39,10 @@ const App: React.FC = () => {
   const [events, setEvents] = useState<EventData[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isHydrated, setIsHydrated] = useState(false); // avoid wiping saved data before load
+  const [fireStatus, setFireStatus] = useState<'off' | 'authenticating' | 'ready' | 'error'>('off');
+  const [fireError, setFireError] = useState('');
+  const [fireUser, setFireUser] = useState<User | null>(null);
+  const [fireBusy, setFireBusy] = useState<'idle' | 'uploading' | 'downloading'>('idle');
   const [isManagerAuthenticated, setIsManagerAuthenticated] = useState(false);
   
   // Navigation State
@@ -78,6 +85,29 @@ const App: React.FC = () => {
     localStorage.setItem('vtm_events', JSON.stringify(events));
     localStorage.setItem('vtm_tickets', JSON.stringify(tickets));
   }, [events, tickets, isHydrated]);
+
+  useEffect(() => {
+    const services = getFirebaseServices();
+    if (!services) {
+      setFireStatus('off');
+      return;
+    }
+    setFireStatus('authenticating');
+    const unsub = onAuthStateChanged(services.auth, (user) => {
+      setFireUser(user);
+      if (user) {
+        setFireStatus('ready');
+      } else {
+        setFireStatus('authenticating');
+      }
+    });
+    signInAnonymously(services.auth).catch(err => {
+      console.error('Firebase auth failed', err);
+      setFireError(err.message || 'Firebase 登录失败');
+      setFireStatus('error');
+    });
+    return () => unsub();
+  }, []);
 
   // --- Actions ---
 
@@ -227,6 +257,83 @@ const App: React.FC = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
+  };
+
+  // --- Firebase Backup / Restore ---
+  const getFireServicesOrAlert = () => {
+    const services = getFirebaseServices();
+    if (!services || fireStatus === 'off') {
+      alert('Firebase 未配置，无法使用 Fire Backup。请先在 Vite 环境变量中填写 Firebase 配置信息。');
+      return null;
+    }
+    if (fireStatus === 'error') {
+      alert(`Firebase 连接异常：${fireError || '未知错误'}`);
+      return null;
+    }
+    if (!fireUser) {
+      alert('尚未登录 Firebase，稍后再试。');
+      return null;
+    }
+    return { ...services, user: fireUser };
+  };
+
+  const handleFireBackup = async () => {
+    const services = getFireServicesOrAlert();
+    if (!services) return;
+    setFireBusy('uploading');
+    try {
+      const now = new Date();
+      const datePart = now.toISOString().split('T')[0];
+      const timePart = now.toTimeString().slice(0,5).replace(':', '-'); // HH-MM
+      const fileName = `vip-ticket-backup-${datePart}-${timePart}.json`;
+      const data = {
+        version: 1,
+        timestamp: Date.now(),
+        events,
+        tickets
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const fileRef = storageRef(services.storage, `backups/${services.user.uid}/${fileName}`);
+      await uploadBytes(fileRef, blob, { contentType: 'application/json' });
+      alert(`已上传到云端：${fileName}`);
+    } catch (err) {
+      console.error('Fire backup failed', err);
+      alert('上传失败，请检查网络或 Firebase 配置。');
+    } finally {
+      setFireBusy('idle');
+    }
+  };
+
+  const handleFireRestore = async () => {
+    const services = getFireServicesOrAlert();
+    if (!services) return;
+    setFireBusy('downloading');
+    try {
+      const folderRef = storageRef(services.storage, `backups/${services.user.uid}`);
+      const list = await listAll(folderRef);
+      if (!list.items.length) {
+        alert('云端没有可用备份。');
+        return;
+      }
+      const latest = list.items.sort((a, b) => a.name.localeCompare(b.name)).slice(-1)[0];
+      const bytes = await getBytes(latest);
+      const text = new TextDecoder().decode(bytes);
+      const data = JSON.parse(text);
+      if (!Array.isArray(data.events) || !Array.isArray(data.tickets)) {
+        alert('备份格式不正确。');
+        return;
+      }
+      if (window.confirm(`发现云备份：${latest.name}\n这将覆盖当前本地数据，确定恢复吗？`)) {
+        setEvents(data.events);
+        setTickets(data.tickets);
+        alert('已从云端恢复完成。');
+      }
+    } catch (err) {
+      console.error('Fire restore failed', err);
+      alert('下载失败，请检查网络或 Firebase 配置。');
+    } finally {
+      setFireBusy('idle');
+    }
   };
 
   // --- Access Control ---
@@ -444,64 +551,82 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
-        
-                {/* Top Controls */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-            <div>
+        <div className="flex flex-col gap-6 mb-8">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div className="space-y-1">
               <p className="text-xs uppercase text-slate-500 font-semibold tracking-wide">Manager Mode</p>
               <h1 className="text-2xl font-bold text-slate-900">Manage Events & Tickets</h1>
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="px-2 py-1 bg-slate-100 rounded-md">Local Backup & Restore</span>
+                <span className={`px-2 py-1 rounded-md ${fireStatus === 'ready' ? 'bg-emerald-100 text-emerald-700' : fireStatus === 'authenticating' ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-600'}`}>
+                  Firebase {fireStatus === 'ready' ? 'Ready' : fireStatus === 'authenticating' ? 'Auth…' : fireStatus === 'error' ? 'Error' : 'Off'}
+                </span>
+                {fireError && <span className="text-red-600">({fireError})</span>}
+              </div>
             </div>
-            
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full md:w-auto">
+            <div className="flex flex-wrap gap-2 w-full md:w-auto">
+              <button
+                onClick={openCreateModal}
+                className="px-3 py-2 bg-brand-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus className="w-4 h-4" /> New Event
+              </button>
+              <button
+                onClick={handleFireBackup}
+                disabled={fireStatus !== 'ready' || fireBusy !== 'idle'}
+                className={`px-3 py-2 text-sm sm:text-base font-medium rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors ${fireStatus === 'ready' && fireBusy === 'idle' ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-teal-100 text-teal-700 cursor-not-allowed'}`}
+              >
+                <Upload className="w-4 h-4" /> Fire Backup
+              </button>
+              <button
+                onClick={handleFireRestore}
+                disabled={fireStatus !== 'ready' || fireBusy !== 'idle'}
+                className={`px-3 py-2 text-sm sm:text-base font-medium rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors ${fireStatus === 'ready' && fireBusy === 'idle' ? 'bg-white text-teal-700 border border-teal-200 hover:bg-teal-50' : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}`}
+              >
+                <Download className="w-4 h-4" /> Fire Restore
+              </button>
+              <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200">
                 <button
-                  onClick={openCreateModal}
-                  className="w-full sm:w-auto px-3 py-2 bg-brand-600 text-white text-sm sm:text-base font-medium rounded-lg shadow-sm hover:bg-brand-700 transition-colors flex items-center justify-center gap-2"
+                  onClick={handleExportData}
+                  className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
+                  title="Download Backup"
                 >
-                  <Plus className="w-4 h-4" /> New Event
+                  <Download className="w-4 h-4" /> Backup
                 </button>
-
-                {/* Data Management */}
-                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 mr-0 sm:mr-2 w-full sm:w-auto">
-                   <button
-                      onClick={handleExportData}
-                      className="flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
-                      title="Download Backup"
-                   >
-                      <Download className="w-4 h-4" /> Backup
-                   </button>
-                   <div className="w-px h-4 bg-slate-200"></div>
-                   <input 
-                      type="file" 
-                      ref={fileInputRef}
-                      onChange={handleImportFile}
-                      className="hidden"
-                      accept=".json"
-                   />
-                   <button
-                      onClick={handleImportTrigger}
-                      className="flex-1 sm:flex-none px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
-                      title="Restore from Backup"
-                   >
-                      <Upload className="w-4 h-4" /> Restore
-                   </button>
-                </div>
-
-                {/* View Toggle */}
-                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 w-full sm:w-auto">
-                    <button 
-                        onClick={() => setShowArchived(false)}
-                        className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-medium transition-all ${!showArchived ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                        Active
-                    </button>
-                    <button 
-                        onClick={() => setShowArchived(true)}
-                        className={`flex-1 sm:flex-none px-4 py-1.5 rounded-md text-sm font-medium transition-all ${showArchived ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                        Archived
-                    </button>
-                </div>
+                <div className="w-px h-4 bg-slate-200"></div>
+                <input 
+                  type="file" 
+                  ref={fileInputRef}
+                  onChange={handleImportFile}
+                  className="hidden"
+                  accept=".json"
+                />
+                <button
+                  onClick={handleImportTrigger}
+                  className="px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-md flex items-center justify-center gap-2 transition-colors"
+                  title="Restore from Backup"
+                >
+                  <Upload className="w-4 h-4" /> Restore
+                </button>
+              </div>
             </div>
+          </div>
+
+          {/* Tabs for Active / Archived */}
+          <div className="flex border-b border-slate-200">
+            <button
+              onClick={() => setShowArchived(false)}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${!showArchived ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setShowArchived(true)}
+              className={`px-4 py-2 text-sm font-semibold border-b-2 transition-colors ${showArchived ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+            >
+              Archived
+            </button>
+          </div>
         </div>
 {/* Event Grid */}
         {filteredEvents.length === 0 ? (
