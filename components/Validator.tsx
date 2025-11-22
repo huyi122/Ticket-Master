@@ -71,28 +71,33 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
     if (!canScan) return;
     setScanError(null);
     try {
+      // render preview first so video ref exists
+      setIsScanning(true);
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (videoRef.current) resolve()
+          else requestAnimationFrame(check);
+        };
+        check();
+      });
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.setAttribute('playsinline', 'true');
-        videoRef.current.setAttribute('autoplay', 'true');
-        videoRef.current.muted = true;
-        videoRef.current.controls = false;
+
+      const videoEl = videoRef.current;
+      if (videoEl) {
+        videoEl.srcObject = stream;
+        videoEl.setAttribute('playsinline', 'true');
+        videoEl.setAttribute('autoplay', 'true');
+        videoEl.muted = true;
+        videoEl.controls = false;
         try {
           await new Promise<void>((resolve) => {
-            const videoEl = videoRef.current!;
-            if (videoEl.readyState >= 1) {
-              resolve();
-              return;
-            }
-            const onReady = () => {
-              videoEl.removeEventListener('loadedmetadata', onReady);
-              resolve();
-            };
+            if (videoEl.readyState >= 1) { resolve(); return; }
+            const onReady = () => { videoEl.removeEventListener('loadedmetadata', onReady); resolve(); };
             videoEl.addEventListener('loadedmetadata', onReady, { once: true });
           });
-          await videoRef.current.play();
+          await videoEl.play();
         } catch (e) {
           console.error('Video play failed', e);
           setScanError('Camera preview unavailable. Try reopening scan.');
@@ -114,9 +119,7 @@ const Validator: React.FC<ValidatorProps> = ({ events, tickets, onUpdateTicket }
         }
       }
 
-      setIsScanning(true);
       let emptyFrameCount = 0;
-
       const tick = async () => {
         const video = videoRef.current;
         if (!video) return;
