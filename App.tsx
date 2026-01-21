@@ -5,34 +5,35 @@ import Validator from './components/Validator';
 import { Plus, Archive, Calendar, Search, LayoutGrid, Download, Upload, Edit2, X, Shield, LogIn, LogOut, Cloud, HardDrive, Activity, Lock } from 'lucide-react';
 import { getFirebaseServices } from './services/firebaseClient';
 import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { ref as storageRef, uploadBytes, listAll, getBytes } from 'firebase/storage';
+import { STORAGE_KEYS } from './services/constants';
+import { readJson, writeJson } from './services/localStorage';
+import { safeJsonParse } from './services/json';
+import {
+  buildBackupDataV1,
+  isBackupDataV1,
+  makeLocalBackupFilename,
+} from './services/backup';
+import { downloadJson } from './services/download';
+import { readTextFile } from './services/file';
+import {
+  archiveEvent,
+  createEvent,
+  deleteEvent,
+  restoreEvent,
+  updateEvent,
+} from './services/eventOps';
+import {
+  addTicketsManual,
+  deleteTicket,
+  generateTickets,
+  updateTicket,
+} from './services/ticketOps';
+import { fireRestoreLatest, fireUploadBackup } from './services/firebaseBackupActions';
 
 declare const __APP_VERSION__: string;
 declare const __APP_BUILD_TIME__: string;
 
 const MANAGER_PASSWORD = 'vipadmin'; // simple built-in password for manager mode
-
-// Helper for random strings
-const generateId = (length: number) => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 1, 0 to avoid confusion
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-};
-
-// Robust UUID generator that works in non-secure contexts
-const uuid = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    try {
-      return crypto.randomUUID();
-    } catch (e) {
-      // Fallback if crypto.randomUUID fails
-    }
-  }
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
-};
 
 const App: React.FC = () => {
   // --- State ---
@@ -68,13 +69,27 @@ const App: React.FC = () => {
 
   // --- Effects (Mock Persistence) ---
   useEffect(() => {
-    const storedEvents = localStorage.getItem('vtm_events');
-    const storedTickets = localStorage.getItem('vtm_tickets');
+    const storedEvents = readJson<EventData[]>(STORAGE_KEYS.events);
+    const storedTickets = readJson<Ticket[]>(STORAGE_KEYS.tickets);
+
     try {
-      if (storedEvents) setEvents(JSON.parse(storedEvents));
-      if (storedTickets) setTickets(JSON.parse(storedTickets));
-    } catch (err) {
-      console.error('Failed to parse stored data', err);
+      if (storedEvents.ok && storedEvents.value) setEvents(storedEvents.value);
+      if (storedTickets.ok && storedTickets.value) setTickets(storedTickets.value);
+
+      if (!storedEvents.ok) {
+        console.error(
+          'Failed to parse stored data',
+          ('error' in storedEvents ? storedEvents.error : undefined)
+            ?? ('message' in storedEvents ? storedEvents.message : undefined),
+        );
+      }
+      if (!storedTickets.ok) {
+        console.error(
+          'Failed to parse stored data',
+          ('error' in storedTickets ? storedTickets.error : undefined)
+            ?? ('message' in storedTickets ? storedTickets.message : undefined),
+        );
+      }
     } finally {
       setIsHydrated(true);
     }
@@ -82,8 +97,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!isHydrated) return; // wait for initial load to avoid wiping existing data
-    localStorage.setItem('vtm_events', JSON.stringify(events));
-    localStorage.setItem('vtm_tickets', JSON.stringify(tickets));
+    writeJson(STORAGE_KEYS.events, events);
+    writeJson(STORAGE_KEYS.tickets, tickets);
   }, [events, tickets, isHydrated]);
 
   useEffect(() => {
@@ -118,36 +133,29 @@ const App: React.FC = () => {
 
   const handleCreateEvent = () => {
     if (!eventName.trim()) return;
-    const newEvent: EventData = {
-      id: uuid(),
-      name: eventName,
-      description: eventDesc,
-      createdAt: Date.now(),
-      isArchived: false,
-    };
-    setEvents([newEvent, ...events]);
+    setEvents(createEvent(events, { name: eventName, description: eventDesc }));
     setShowCreateModal(false);
   };
 
   const handleUpdateEvent = () => {
     if (!editingEventId || !eventName.trim()) return;
-    setEvents(events.map(e => e.id === editingEventId ? { ...e, name: eventName, description: eventDesc } : e));
+    setEvents(updateEvent(events, { eventId: editingEventId, name: eventName, description: eventDesc }));
     setShowEditModal(false);
     setEditingEventId(null);
   };
 
   // Used by EventDetail component to update event
   const handleUpdateEventDirect = (eventId: string, name: string, description: string) => {
-     setEvents(events.map(e => e.id === eventId ? { ...e, name, description } : e));
+     setEvents(updateEvent(events, { eventId, name, description }));
   };
 
   const handleArchiveEvent = (id: string) => {
     // Removed window.confirm to prevent blocking issues. Users can restore if needed.
-    setEvents(events.map(e => e.id === id ? { ...e, isArchived: true } : e));
+    setEvents(archiveEvent(events, id));
   };
   
   const handleRestoreEvent = (id: string) => {
-      setEvents(events.map(e => e.id === id ? { ...e, isArchived: false } : e));
+      setEvents(restoreEvent(events, id));
   };
   
   const handleDeleteEvent = (id: string) => {
@@ -155,8 +163,9 @@ const App: React.FC = () => {
     if (!target) return;
     const ok = window.confirm(`删除事件 "${target.name}" 将同时删除其所有票据，且无法恢复。确定删除吗？`);
     if (!ok) return;
-    setEvents(events.filter(e => e.id !== id));
-    setTickets(tickets.filter(t => t.eventId !== id));
+    const next = deleteEvent(events, tickets, id);
+    setEvents(next.events);
+    setTickets(next.tickets);
     if (selectedEventId === id) {
       setSelectedEventId(null);
       setCurrentView('dashboard');
@@ -164,68 +173,28 @@ const App: React.FC = () => {
   };
 
   const handleGenerateTickets = (eventId: string, count: number, length: number) => {
-    const newTickets: Ticket[] = [];
-    const existingCodes = new Set(tickets.map(t => t.code));
-    
-    let attempts = 0;
-    while (newTickets.length < count && attempts < count * 5) {
-      const code = generateId(length);
-      if (!existingCodes.has(code)) {
-        newTickets.push({
-          id: uuid(),
-          eventId,
-          code,
-          status: TicketStatus.ISSUED,
-          generatedAt: Date.now(),
-        });
-        existingCodes.add(code);
-      }
-      attempts++;
-    }
-    setTickets([...tickets, ...newTickets]);
+    setTickets(generateTickets(tickets, { eventId, count, length }));
   };
 
   const handleAddTicketsManual = (eventId: string, codes: string[]) => {
     // Assuming validation happened in the child component
-    const newTickets = codes.map(code => ({
-      id: uuid(),
-      eventId,
-      code,
-      status: TicketStatus.ISSUED as TicketStatus,
-      generatedAt: Date.now(),
-    }));
-    setTickets([...tickets, ...newTickets]);
+    setTickets(addTicketsManual(tickets, { eventId, codes }));
   };
 
   const handleUpdateTicket = (ticketId: string, updates: Partial<Ticket>) => {
-    setTickets(tickets.map(t => t.id === ticketId ? { ...t, ...updates } : t));
+    setTickets(updateTicket(tickets, ticketId, updates));
   };
 
   const handleDeleteTicket = (ticketId: string) => {
-    setTickets(tickets.filter(t => t.id !== ticketId));
+    setTickets(deleteTicket(tickets, ticketId));
   };
 
   // --- Data Management Actions ---
 
   const handleExportData = () => {
-    const data = {
-      version: 1,
-      timestamp: Date.now(),
-      events,
-      tickets
-    };
-    const now = new Date();
-    const datePart = now.toISOString().split('T')[0];
-    const timePart = now.toTimeString().slice(0,8).replace(':', '-'); // HH-MM
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `vip-ticket-backup-${datePart}-${timePart}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const filename = makeLocalBackupFilename(new Date());
+    const data = buildBackupDataV1(events, tickets);
+    downloadJson(filename, data);
   };
 
   const handleImportTrigger = () => {
@@ -236,18 +205,30 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
+    readTextFile(file).then((res) => {
       try {
-        const content = event.target?.result as string;
-        const data = JSON.parse(content);
+        if (!res.ok) {
+          throw (
+            ('error' in res ? res.error : undefined)
+            ?? new Error('message' in res ? res.message : 'Failed to read file')
+          );
+        }
+
+        const parsed = safeJsonParse<unknown>(res.value);
+        if (!parsed.ok) {
+          throw (
+            ('error' in parsed ? parsed.error : undefined)
+            ?? new Error('message' in parsed ? parsed.message : 'Failed to parse JSON')
+          );
+        }
 
         // Basic validation
-        if (!Array.isArray(data.events) || !Array.isArray(data.tickets)) {
+        if (!isBackupDataV1(parsed.value)) {
           alert('Invalid backup file format.');
           return;
         }
 
+        const data = parsed.value;
         if (window.confirm(`Found ${data.events.length} events and ${data.tickets.length} tickets. \n\nWARNING: This will REPLACE all current data. Are you sure?`)) {
           setEvents(data.events);
           setTickets(data.tickets);
@@ -256,54 +237,28 @@ const App: React.FC = () => {
       } catch (err) {
         console.error(err);
         alert('Error parsing the backup file. Please ensure it is a valid JSON file.');
+      } finally {
+        // Reset input so same file can be selected again if needed
+        if (fileInputRef.current) fileInputRef.current.value = '';
       }
-      // Reset input so same file can be selected again if needed
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-    reader.readAsText(file);
-  };
-
-  // --- Firebase Backup / Restore ---
-  const getFireServicesOrAlert = () => {
-    const services = getFirebaseServices();
-    if (!services || fireStatus === 'off') {
-      alert('Firebase 未配置，无法使用 Fire Backup。请先在 Vite 环境变量中填写 Firebase 配置信息。');
-      return null;
-    }
-    if (fireStatus === 'error') {
-      alert(`Firebase 连接异常：${fireError || '未知错误'}`);
-      return null;
-    }
-    if (fireStatus === 'needs_auth') {
-      alert('请先用 Google 登录后再使用 Fire 功能。');
-      return null;
-    }
-    if (!fireUser) {
-      alert('尚未登录 Firebase，稍后再试。');
-      return null;
-    }
-    return { ...services, user: fireUser };
+    });
   };
 
   const handleFireBackup = async () => {
-    const services = getFireServicesOrAlert();
-    if (!services) return;
     setFireBusy('uploading');
     try {
-      const now = new Date();
-      const datePart = now.toISOString().split('T')[0];
-      const timePart = now.toTimeString().slice(0,5).replace(':', '-'); // HH-MM
-      const fileName = `vip-ticket-backup-${datePart}-${timePart}.json`;
-      const data = {
-        version: 1,
-        timestamp: Date.now(),
+      const res = await fireUploadBackup({
         events,
-        tickets
-      };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const fileRef = storageRef(services.storage, `backups/${services.user.uid}/${fileName}`);
-      await uploadBytes(fileRef, blob, { contentType: 'application/json' });
-      alert(`已上传到云端：${fileName}`);
+        tickets,
+        fireStatus,
+        fireError,
+        fireUser,
+      });
+      if (!res.ok) {
+        alert('message' in res ? res.message : '上传失败，请检查网络或 Firebase 配置。');
+        return;
+      }
+      alert(`已上传到云端：${res.value.fileName}`);
     } catch (err) {
       console.error('Fire backup failed', err);
       alert('上传失败，请检查网络或 Firebase 配置。');
@@ -313,27 +268,21 @@ const App: React.FC = () => {
   };
 
   const handleFireRestore = async () => {
-    const services = getFireServicesOrAlert();
-    if (!services) return;
     setFireBusy('downloading');
     try {
-      const folderRef = storageRef(services.storage, `backups/${services.user.uid}`);
-      const list = await listAll(folderRef);
-      if (!list.items.length) {
-        alert('云端没有可用备份。');
+      const res = await fireRestoreLatest({
+        fireStatus,
+        fireError,
+        fireUser,
+      });
+      if (!res.ok) {
+        alert('message' in res ? res.message : '下载失败，请检查网络或 Firebase 配置。');
         return;
       }
-      const latest = list.items.sort((a, b) => a.name.localeCompare(b.name)).slice(-1)[0];
-      const bytes = await getBytes(latest);
-      const text = new TextDecoder().decode(bytes);
-      const data = JSON.parse(text);
-      if (!Array.isArray(data.events) || !Array.isArray(data.tickets)) {
-        alert('备份格式不正确。');
-        return;
-      }
-      if (window.confirm(`发现云备份：${latest.name}\n这将覆盖当前本地数据，确定恢复吗？`)) {
-        setEvents(data.events);
-        setTickets(data.tickets);
+      const { backup, name } = res.value;
+      if (window.confirm(`发现云备份：${name}\n这将覆盖当前本地数据，确定恢复吗？`)) {
+        setEvents(backup.events);
+        setTickets(backup.tickets);
         alert('已从云端恢复完成。');
       }
     } catch (err) {
@@ -350,6 +299,16 @@ const App: React.FC = () => {
       alert('Firebase 未配置，无法登录。');
       return;
     }
+
+    // Google OAuth requires a valid hostname. If the app is opened via
+    // http://0.0.0.0:5173, the OAuth request can be rejected as malformed.
+    // Keep Vite server.host=0.0.0.0 for LAN access, but instruct users to
+    // open via localhost for login.
+    if (window.location.hostname === '0.0.0.0') {
+      alert('请使用 http://localhost:5173 打开页面后再进行 Google 登录（不要用 0.0.0.0）。');
+      return;
+    }
+
     setFireStatus('authenticating');
     setFireError('');
     try {
@@ -357,7 +316,11 @@ const App: React.FC = () => {
       await signInWithPopup(services.auth, provider);
     } catch (err: any) {
       console.error('Firebase Google 登录失败', err);
-      setFireError(err.message || 'Google 登录失败');
+
+      const code = typeof err?.code === 'string' ? err.code : '';
+      const message = typeof err?.message === 'string' ? err.message : '';
+      const details = code ? `${code}${message ? `: ${message}` : ''}` : (message || 'Google 登录失败');
+      setFireError(details);
       setFireStatus('error');
     }
   };

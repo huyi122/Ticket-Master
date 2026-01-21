@@ -31,3 +31,10 @@ export interface DuplicateError {
   code: string;
   lineIndex: number;
 }
+
+export interface BackupDataV1 {
+  version: 1;
+  timestamp: number;
+  events: EventData[];
+  tickets: Ticket[];
+}
